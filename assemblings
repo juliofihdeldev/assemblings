@@ -165,6 +165,27 @@ show_progress_bar() {
     echo -e "${BOLD}Progress: ${GREEN}${done}${RESET}/${total}  [${GREEN}${bar}${RESET}]  ${percent}%"
 }
 
+print_exercise() {
+    local path="$1"
+    echo ""
+    echo -e "${BOLD}${BLUE}── $(exercise_name "$path") ──────────────────────────────────────${RESET}"
+    echo ""
+    local n=0
+    while IFS= read -r line; do
+        (( n++ )) || true
+        if [[ "$line" == *"I AM NOT DONE"* ]]; then
+            printf "${RED}  %3d  %s${RESET}\n" "$n" "$line"
+        elif [[ "$line" == *"BUG"* || "$line" == *"TODO"* || "$line" == *"FIXME"* ]]; then
+            printf "${YELLOW}  %3d  %s${RESET}\n" "$n" "$line"
+        elif [[ -z "$line" || "$line" =~ ^[[:space:]]*//.* || "$line" =~ ^[[:space:]]*\..* ]]; then
+            printf "${DIM}  %3d  %s${RESET}\n" "$n" "$line"
+        else
+            printf "  %3d  %s\n" "$n" "$line"
+        fi
+    done < "$path"
+    echo ""
+}
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 cmd_status() {
@@ -188,7 +209,8 @@ cmd_status() {
     echo -e "${BOLD}Current exercise:${RESET}  ${YELLOW}$name${RESET}"
     echo -e "${DIM}File: $exercise_path${RESET}"
     echo ""
-    echo -e "Open the file in your editor, then run:"
+    print_exercise "$exercise_path"
+    echo -e "Run:"
     echo -e "  ${BOLD}assemblings watch${RESET}        # auto-verify on every save"
     echo -e "  ${BOLD}assemblings verify${RESET}       # verify once manually"
     echo -e "  ${BOLD}assemblings hint${RESET}         # show a hint"
@@ -312,57 +334,65 @@ cmd_reset() {
 }
 
 cmd_watch() {
-    local exercise_path
-    exercise_path=$(get_current_exercise)
+    local current_ex
+    current_ex=$(get_current_exercise)
 
-    if [[ -z "$exercise_path" ]]; then
+    if [[ -z "$current_ex" ]]; then
         echo -e "${GREEN}${BOLD}All exercises completed!${RESET}"
         return
     fi
 
-    local name last_mod current_mod
-    name=$(exercise_name "$exercise_path")
-    last_mod=""
+    # Track mod times in temp files (bash 3.2 compatible, no associative arrays)
+    local mtime_dir
+    mtime_dir=$(mktemp -d)
+    trap "rm -rf '$mtime_dir'" RETURN
+
+    while IFS= read -r ex; do
+        local mod
+        mod=$(stat -f "%m" "$ex" 2>/dev/null || stat -c "%Y" "$ex" 2>/dev/null || echo "0")
+        echo "$mod" > "$mtime_dir/$(exercise_name "$ex")"
+    done < <(get_all_exercises)
 
     clear
-    echo -e "${BOLD}${CYAN}  Watching: $name${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
-    echo -e "${DIM}  $exercise_path${RESET}"
-    echo -e "${DIM}  Save the file to auto-compile and verify.${RESET}"
-    echo ""
+    echo -e "${BOLD}${CYAN}  Watching all exercises${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
+    show_progress_bar
+    print_exercise "$current_ex"
 
     while true; do
-        current_mod=$(stat -f "%m" "$exercise_path" 2>/dev/null \
-                   || stat -c "%Y" "$exercise_path" 2>/dev/null \
-                   || echo "0")
+        local changed_ex=""
+        while IFS= read -r ex; do
+            local name stored current
+            name=$(exercise_name "$ex")
+            stored=$(cat "$mtime_dir/$name" 2>/dev/null || echo "0")
+            current=$(stat -f "%m" "$ex" 2>/dev/null || stat -c "%Y" "$ex" 2>/dev/null || echo "0")
+            if [[ "$current" != "$stored" ]]; then
+                echo "$current" > "$mtime_dir/$name"
+                changed_ex="$ex"; break
+            fi
+        done < <(get_all_exercises)
 
-        if [[ "$current_mod" != "$last_mod" && -n "$last_mod" ]]; then
+        if [[ -n "$changed_ex" ]]; then
             clear
-            echo -e "${BOLD}${CYAN}  Watching: $name${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
+            echo -e "${BOLD}${CYAN}  Saved: $(exercise_name "$changed_ex")${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
             echo ""
-
-            if verify_exercise "$exercise_path"; then
-                sleep 2
-                exercise_path=$(get_current_exercise)
-
-                if [[ -z "$exercise_path" ]]; then
-                    echo ""
-                    echo -e "${GREEN}${BOLD}  All exercises completed!${RESET}"
+            if verify_exercise "$changed_ex"; then
+                sleep 1
+                current_ex=$(get_current_exercise)
+                clear
+                if [[ -z "$current_ex" ]]; then
+                    echo -e "${GREEN}${BOLD}  All exercises completed! Great work!${RESET}"
                     echo ""
                     show_progress_bar
-                    break
+                    return
                 fi
-
-                name=$(exercise_name "$exercise_path")
+                echo -e "${BOLD}${CYAN}  Watching all exercises${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
+                show_progress_bar
+                print_exercise "$current_ex"
+            else
                 echo ""
-                echo -e "${BOLD}  Next up:${RESET} ${YELLOW}$name${RESET}"
-                echo -e "${DIM}  $exercise_path${RESET}"
-                echo ""
-                last_mod=""
-                continue
+                print_exercise "$changed_ex"
             fi
         fi
-
-        last_mod="$current_mod"
         sleep 0.5
     done
 }
