@@ -1,0 +1,14 @@
+LSL (Logical Shift Left) syntax:
+
+    lsl dst, src, #amount    // dst = src << amount
+
+Shifting left by N is the same as multiplying by 2^N:
+    lsl x0, x1, #1    // x1 * 2
+    lsl x0, x1, #2    // x1 * 4
+    lsl x0, x1, #3    // x1 * 8
+    lsl x0, x1, #4    // x1 * 16
+
+The task asks for 3 * 16.  16 = 2^4, so the shift amount is 4.
+
+Current buggy code shifts by 2:  3 * 4 = 12  (wrong)
+Fix: shift by 4:                 3 * 16 = 48  ✓

@@ -1,0 +1,18 @@
+Count the bytes in "Assemblings!\n":
+
+  A s s e m b l i n g s ! \n
+  1 2 3 4 5 6 7 8 9 10 11 12 13
+
+That's 13 bytes. Change #99 to #13.
+
+Alternatively, let the assembler compute it for you:
+
+    message:
+        .ascii "Assemblings!\n"
+    message_len = . - message        // assembler arithmetic
+
+Then use:
+    mov x2, #message_len
+
+The '.' symbol means "current address", so '. - message' gives the
+number of bytes from 'message' to here.

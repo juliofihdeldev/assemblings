@@ -1,0 +1,9 @@
+Trace the execution with x0=3:
+
+    cmp x0, #1  →  3 == 1?  No, no branch
+    cmp x0, #2  →  3 == 2?  No, no branch
+    cmp x0, #4  →  3 == 4?  No, no branch  ← BUG: should check #3
+    // falls through to default: exits with 0
+
+To reach case3 (exit 30), the third CMP must compare with 3:
+    cmp x0, #3     // 3 == 3? Yes → branch to case3 → exit 30

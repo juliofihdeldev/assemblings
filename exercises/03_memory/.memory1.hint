@@ -1,0 +1,13 @@
+The data layout in memory (after 'first'):
+
+    Offset 0:  77   ← 'first'
+    Offset 8:  99   ← 'second'
+
+    adr x1, first      // x1 points to offset 0 (where 77 lives)
+    ldr x0, [x1, #8]   // loads offset 8 = 99   ✗ (wrong!)
+    ldr x0, [x1]       // loads offset 0 = 77   ✓
+
+To load from the base address without any offset, use just [x1]:
+    ldr x0, [x1]
+
+This is equivalent to [x1, #0].

@@ -1,0 +1,12 @@
+MUL syntax:
+
+    mul dst, src1, src2    // dst = src1 * src2
+
+The buggy line:
+    mul x0, x1, x1        // x0 = 6 * 6 = 36  (wrong!)
+
+Fix it so the third operand is x2 (which holds 7):
+    mul x0, x1, x2        // x0 = 6 * 7 = 42  ✓
+
+Remember: all three operands must be registers.
+You cannot write   mul x0, x1, #7   — immediates aren't allowed in MUL.

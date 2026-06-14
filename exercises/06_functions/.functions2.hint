@@ -1,0 +1,13 @@
+When add_args is called with (13, 29):
+    x0 = 13    (first argument)
+    x1 = 29    (second argument)
+
+The function should return x0+x1 = 42.
+
+The buggy instruction:
+    add x0, x0, x0     // x0 = 13 + 13 = 26  ✗
+
+Fix: add x0, x0, x1   // x0 = 13 + 29 = 42  ✓
+
+Remember: in AAPCS64, the first arg is in x0, the second in x1.
+The return value must be placed in x0 before ret.

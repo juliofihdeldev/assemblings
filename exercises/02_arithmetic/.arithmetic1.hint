@@ -1,0 +1,13 @@
+Trace the computation step by step:
+
+    mov x1, #100         x1 = 100
+    mov x2, #37          x2 = 37
+    mov x3, #15          x3 = 15
+
+    sub x0, x1, x2       x0 = 100 - 37 = 63    ✓
+
+    add x0, x0, x2       x0 = 63 + 37 = 100    ✗  (wrong register!)
+
+The final ADD should use x3 (which holds 15), not x2 (which holds 37):
+
+    add x0, x0, x3       x0 = 63 + 15 = 78     ✓

@@ -1,0 +1,11 @@
+After "cmp x1, x2", the flags reflect (x1 - x2).
+
+Branch suffixes:
+    b.gt    branch if the result was > 0   (x1 > x2)
+    b.lt    branch if the result was < 0   (x1 < x2)
+    b.ge    branch if the result was >= 0  (x1 >= x2)
+    b.le    branch if the result was <= 0  (x1 <= x2)
+    b.eq    branch if the result was == 0  (x1 == x2)
+
+Here x1=10, x2=5. We want to branch to 'is_greater' when x1 > x2.
+The condition for "x1 > x2" is b.gt, not b.lt.

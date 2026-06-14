@@ -1,0 +1,12 @@
+We stored 123 at [sp+0]:
+    str  x1, [sp]          // stores at sp+0
+
+So we must load it from the same address:
+    ldr  x0, [sp]          // loads from sp+0 = 123  ✓
+    ldr  x0, [sp, #8]      // loads from sp+8 = garbage  ✗
+
+The offset in the LDR must match the offset used in the STR.
+
+Stack visualization:
+    [sp+0]  = 123   ← stored here
+    [sp+8]  = ???   ← never written, could be anything

@@ -1,0 +1,396 @@
+#!/usr/bin/env bash
+# assemblings - Learn ARM64 Assembly through small exercises
+# Inspired by Rustlings (https://rustlings.rust-lang.org/)
+
+set -uo pipefail
+
+ASSEMBLINGS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXERCISES_DIR="$ASSEMBLINGS_DIR/exercises"
+PROGRESS_FILE="$ASSEMBLINGS_DIR/.progress"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+usage() {
+    cat <<EOF
+${BOLD}assemblings${RESET} - Learn ARM64 Assembly through small exercises
+
+${BOLD}USAGE:${RESET}
+    assemblings [COMMAND]
+
+${BOLD}COMMANDS:${RESET}
+    (no command)        Show current exercise and status
+    watch               Auto-compile and verify on every file save
+    verify [name]       Verify current or named exercise
+    hint [name]         Show hint for current or named exercise
+    list                List all exercises with completion status
+    run [name]          Compile and run an exercise without verifying
+    reset <name>        Reset an exercise to its original state
+    help                Show this help message
+
+${BOLD}EXAMPLES:${RESET}
+    assemblings               # Show where you are
+    assemblings watch         # Start coding — auto-verifies on save
+    assemblings hint          # Get a hint for the current exercise
+    assemblings list          # See all exercises and progress
+    assemblings run hello1    # Compile and run hello1.s
+EOF
+}
+
+# ── Dependency check ──────────────────────────────────────────────────────────
+
+check_deps() {
+    if ! command -v clang >/dev/null 2>&1; then
+        echo -e "${RED}${BOLD}Error: clang not found.${RESET}"
+        echo ""
+        echo "assemblings requires clang to compile ARM64 assembly."
+        echo "Install Xcode Command Line Tools:"
+        echo "  xcode-select --install"
+        exit 1
+    fi
+}
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+get_all_exercises() {
+    find "$EXERCISES_DIR" -name "*.s" \
+        ! -name "*.orig.s" \
+        | sort
+}
+
+exercise_name() { basename "$1" .s; }
+exercise_dir()  { dirname "$1"; }
+
+test_script() {
+    local dir name
+    dir=$(dirname "$1"); name=$(basename "$1" .s)
+    echo "$dir/.$name.test.sh"
+}
+
+hint_file() {
+    local dir name
+    dir=$(dirname "$1"); name=$(basename "$1" .s)
+    echo "$dir/.$name.hint"
+}
+
+orig_file() {
+    local dir name
+    dir=$(dirname "$1"); name=$(basename "$1" .s)
+    echo "$dir/$name.orig.s"
+}
+
+is_done()    { grep -qxF "$1" "$PROGRESS_FILE" 2>/dev/null; }
+mark_done()  { is_done "$1" || echo "$1" >> "$PROGRESS_FILE"; }
+find_exercise() {
+    find "$EXERCISES_DIR" -name "${1}.s" ! -name "*.orig.s" | head -1
+}
+
+unmark_done() {
+    [[ -f "$PROGRESS_FILE" ]] || return
+    grep -v "^${1}$" "$PROGRESS_FILE" > "${PROGRESS_FILE}.tmp" 2>/dev/null || true
+    mv "${PROGRESS_FILE}.tmp" "$PROGRESS_FILE"
+}
+
+get_current_exercise() {
+    while IFS= read -r ex; do
+        is_done "$(exercise_name "$ex")" || { echo "$ex"; return; }
+    done < <(get_all_exercises)
+}
+
+count_done() {
+    local n=0
+    while IFS= read -r ex; do
+        is_done "$(exercise_name "$ex")" && ((n++)) || true
+    done < <(get_all_exercises)
+    echo "$n"
+}
+
+count_total() { get_all_exercises | wc -l | tr -d ' '; }
+
+# ── Test runner ───────────────────────────────────────────────────────────────
+
+run_test() {
+    local exercise_path="$1"
+    local test_path
+    test_path=$(test_script "$exercise_path")
+
+    if [[ ! -f "$test_path" ]]; then
+        echo -e "${RED}No test found for this exercise.${RESET}"
+        return 1
+    fi
+
+    bash "$test_path" "$exercise_path"
+}
+
+verify_exercise() {
+    local exercise_path="$1"
+    local name
+    name=$(exercise_name "$exercise_path")
+
+    echo -e "${CYAN}${BOLD}Compiling & testing: $name${RESET}"
+    echo ""
+
+    if run_test "$exercise_path"; then
+        echo ""
+        echo -e "${GREEN}${BOLD}  Exercise '$name' completed!${RESET}"
+        mark_done "$name"
+        return 0
+    else
+        echo ""
+        echo -e "${RED}${BOLD}  Tests failed. Keep going!${RESET}"
+        echo -e "${DIM}  File: $exercise_path${RESET}"
+        echo -e "${DIM}  Run 'assemblings hint' if you're stuck.${RESET}"
+        return 1
+    fi
+}
+
+# ── Progress ──────────────────────────────────────────────────────────────────
+
+show_progress_bar() {
+    local done total percent bar_width filled empty bar
+    done=$(count_done); total=$(count_total)
+    [[ "$total" -eq 0 ]] && return
+    percent=$(( done * 100 / total ))
+    bar_width=40; filled=$(( done * bar_width / total )); empty=$(( bar_width - filled ))
+    bar=""
+    for ((i=0; i<filled; i++)); do bar+=""; done
+    for ((i=0; i<empty; i++)); do bar+=""; done
+    echo -e "${BOLD}Progress: ${GREEN}${done}${RESET}/${total}  [${GREEN}${bar}${RESET}]  ${percent}%"
+}
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+cmd_status() {
+    local exercise_path
+    exercise_path=$(get_current_exercise)
+
+    echo ""
+    echo -e "${BOLD}${CYAN}  A S S E M B L I N G S${RESET}"
+    echo -e "${DIM}  ARM64 Assembly for Apple Silicon${RESET}"
+    echo ""
+    show_progress_bar
+    echo ""
+
+    if [[ -z "$exercise_path" ]]; then
+        echo -e "${GREEN}${BOLD}  All exercises completed!${RESET}"
+        return
+    fi
+
+    local name
+    name=$(exercise_name "$exercise_path")
+    echo -e "${BOLD}Current exercise:${RESET}  ${YELLOW}$name${RESET}"
+    echo -e "${DIM}File: $exercise_path${RESET}"
+    echo ""
+    echo -e "Open the file in your editor, then run:"
+    echo -e "  ${BOLD}assemblings watch${RESET}        # auto-verify on every save"
+    echo -e "  ${BOLD}assemblings verify${RESET}       # verify once manually"
+    echo -e "  ${BOLD}assemblings hint${RESET}         # show a hint"
+    echo ""
+}
+
+cmd_list() {
+    echo ""
+    echo -e "${BOLD}${CYAN}  Assemblings Exercises${RESET}"
+    echo -e "${DIM}  ARM64 Assembly for Apple Silicon (macOS)${RESET}"
+    echo ""
+
+    local current_topic="" current_ex
+    current_ex=$(get_current_exercise)
+
+    while IFS= read -r ex; do
+        local name topic
+        name=$(exercise_name "$ex")
+        topic=$(basename "$(exercise_dir "$ex")")
+
+        if [[ "$topic" != "$current_topic" ]]; then
+            echo -e "\n${BOLD}${BLUE}  $topic${RESET}"
+            current_topic="$topic"
+        fi
+
+        if is_done "$name"; then
+            echo -e "    ${GREEN}${RESET}  $name"
+        elif [[ "$ex" == "$current_ex" ]]; then
+            echo -e "    ${YELLOW}${RESET}  ${BOLD}$name${RESET}  ${YELLOW}<-- you are here${RESET}"
+        else
+            echo -e "    ${DIM}    $name${RESET}"
+        fi
+    done < <(get_all_exercises)
+
+    echo ""
+    show_progress_bar
+    echo ""
+}
+
+cmd_hint() {
+    local exercise_path
+    if [[ -n "${1:-}" ]]; then
+        exercise_path=$(find_exercise "$1")
+        [[ -z "$exercise_path" ]] && { echo -e "${RED}Exercise not found: $1${RESET}"; return 1; }
+    else
+        exercise_path=$(get_current_exercise)
+        [[ -z "$exercise_path" ]] && { echo -e "${GREEN}All done!${RESET}"; return; }
+    fi
+
+    local name hint_path
+    name=$(exercise_name "$exercise_path")
+    hint_path=$(hint_file "$exercise_path")
+
+    echo ""
+    echo -e "${BOLD}${YELLOW}  Hint: $name${RESET}"
+    echo ""
+    if [[ -f "$hint_path" ]]; then
+        cat "$hint_path"
+    else
+        echo -e "${DIM}  No hint available.${RESET}"
+    fi
+    echo ""
+}
+
+cmd_run() {
+    local exercise_path binary
+    if [[ -n "${1:-}" ]]; then
+        exercise_path=$(find_exercise "$1")
+        [[ -z "$exercise_path" ]] && { echo -e "${RED}Exercise not found: $1${RESET}"; return 1; }
+    else
+        exercise_path=$(get_current_exercise)
+        [[ -z "$exercise_path" ]] && { echo -e "${GREEN}All done!${RESET}"; return; }
+    fi
+
+    local name
+    name=$(exercise_name "$exercise_path")
+    binary="/tmp/assemblings_run_$$"
+
+    echo -e "${CYAN}Compiling: $name${RESET}"
+    if ! clang -o "$binary" "$exercise_path" 2>&1; then
+        echo -e "${RED}Compilation failed.${RESET}"
+        return 1
+    fi
+
+    echo -e "${CYAN}Running: $name${RESET}"
+    echo "---"
+    "$binary" || true
+    local code=$?
+    echo "---"
+    echo -e "${DIM}Exit code: $code${RESET}"
+    rm -f "$binary"
+}
+
+cmd_verify() {
+    local exercise_path
+    if [[ -n "${1:-}" ]]; then
+        exercise_path=$(find_exercise "$1")
+        [[ -z "$exercise_path" ]] && { echo -e "${RED}Exercise not found: $1${RESET}"; return 1; }
+    else
+        exercise_path=$(get_current_exercise)
+        [[ -z "$exercise_path" ]] && { echo -e "${GREEN}${BOLD}All exercises completed!${RESET}"; return; }
+    fi
+    verify_exercise "$exercise_path"
+}
+
+cmd_reset() {
+    local name="${1:-}"
+    [[ -z "$name" ]] && { echo -e "${RED}Usage: assemblings reset <exercise-name>${RESET}"; return 1; }
+
+    local exercise_path
+    exercise_path=$(find_exercise "$name")
+    [[ -z "$exercise_path" ]] && { echo -e "${RED}Exercise not found: $name${RESET}"; return 1; }
+
+    local orig
+    orig=$(orig_file "$exercise_path")
+    [[ ! -f "$orig" ]] && { echo -e "${RED}No original backup found for: $name${RESET}"; return 1; }
+
+    cp "$orig" "$exercise_path"
+    unmark_done "$name"
+    echo -e "${GREEN}Reset: $name${RESET}"
+}
+
+cmd_watch() {
+    local exercise_path
+    exercise_path=$(get_current_exercise)
+
+    if [[ -z "$exercise_path" ]]; then
+        echo -e "${GREEN}${BOLD}All exercises completed!${RESET}"
+        return
+    fi
+
+    local name last_mod current_mod
+    name=$(exercise_name "$exercise_path")
+    last_mod=""
+
+    clear
+    echo -e "${BOLD}${CYAN}  Watching: $name${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
+    echo -e "${DIM}  $exercise_path${RESET}"
+    echo -e "${DIM}  Save the file to auto-compile and verify.${RESET}"
+    echo ""
+
+    while true; do
+        current_mod=$(stat -f "%m" "$exercise_path" 2>/dev/null \
+                   || stat -c "%Y" "$exercise_path" 2>/dev/null \
+                   || echo "0")
+
+        if [[ "$current_mod" != "$last_mod" && -n "$last_mod" ]]; then
+            clear
+            echo -e "${BOLD}${CYAN}  Watching: $name${RESET}  ${DIM}(Ctrl+C to exit)${RESET}"
+            echo ""
+
+            if verify_exercise "$exercise_path"; then
+                sleep 2
+                exercise_path=$(get_current_exercise)
+
+                if [[ -z "$exercise_path" ]]; then
+                    echo ""
+                    echo -e "${GREEN}${BOLD}  All exercises completed!${RESET}"
+                    echo ""
+                    show_progress_bar
+                    break
+                fi
+
+                name=$(exercise_name "$exercise_path")
+                echo ""
+                echo -e "${BOLD}  Next up:${RESET} ${YELLOW}$name${RESET}"
+                echo -e "${DIM}  $exercise_path${RESET}"
+                echo ""
+                last_mod=""
+                continue
+            fi
+        fi
+
+        last_mod="$current_mod"
+        sleep 0.5
+    done
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+main() {
+    check_deps
+    touch "$PROGRESS_FILE"
+
+    local cmd="${1:-}"
+    shift || true
+
+    case "$cmd" in
+        ""|status)  cmd_status ;;
+        watch)      cmd_watch ;;
+        verify)     cmd_verify "${1:-}" ;;
+        hint)       cmd_hint "${1:-}" ;;
+        list)       cmd_list ;;
+        run)        cmd_run "${1:-}" ;;
+        reset)      cmd_reset "${1:-}" ;;
+        help|--help|-h) usage ;;
+        *)
+            echo -e "${RED}Unknown command: $cmd${RESET}"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

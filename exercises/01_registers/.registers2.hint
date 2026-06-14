@@ -1,0 +1,10 @@
+To copy a register, the destination comes first:
+
+    mov dst, src     // dst = src
+
+So to copy x1 into x0:
+
+    mov x0, x1       // x0 = x1
+
+The buggy line has both operands as x0, which is a no-op.
+The source should be x1.

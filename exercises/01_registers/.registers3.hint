@@ -1,0 +1,9 @@
+The ADD instruction takes three operands:
+
+    add dst, src1, src2     // dst = src1 + src2
+
+The buggy line is:
+    add x0, x1, x1          // x0 = x1 + x1 = 20
+
+It adds x1 to itself. The third operand should be x2:
+    add x0, x1, x2          // x0 = x1 + x2 = 10 + 15 = 25

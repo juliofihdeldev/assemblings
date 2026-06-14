@@ -1,0 +1,11 @@
+The MOV instruction loads a value into a register:
+
+    mov x0, #42     // x0 = 42
+
+The '#' prefix is required before immediate (literal) numbers.
+
+The exit syscall reads x0 as the exit code:
+    mov x16, #1
+    svc #0x80       // exits with whatever is in x0
+
+Change #0 to #42 in the first mov instruction.
